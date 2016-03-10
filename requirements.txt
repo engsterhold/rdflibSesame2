@@ -1,0 +1,5 @@
+isodate==0.5.4
+lxml==3.5.0
+pyparsing==2.0.6
+rdflib==4.2.1
+requests==2.9.0
