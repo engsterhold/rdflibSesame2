@@ -27,8 +27,10 @@ ENDPOINTS = {"virtuoso": "http://localhost:8890/sparql",
              }
 
 RES = URIRef("http://127.0.0.1:6543/atlas/mrhsa/resource/33c0f063-c1d4-4a09-8184-ca736e6aa8b7")
+RES2 = URIRef("http://127.0.0.1:6543/atlas/mrhsa/resource/b49b4fcb-d95e-49f2-a499-d5907aafb5aa")
 PRED = URIRef("http://127.0.0.1:6543/properties/map#werkbeschreibung")
 OBS = URIRef("http://purl.org/linked-data/cube#Observation")
+RES3 = URIRef("http://127.0.0.1:6543/linguistics/phonetic/NearCloseNearBackRoundedVowel")
 LIT = Literal("Strodthagen")
 LIT2 = Literal("bose")
 BN = BNode("x151A5F8E32EN94bc7de8665f42f9aa9e561906aa60da")
@@ -144,12 +146,14 @@ def access_via_rdflib(endpoint, trip):
 def access_via_rdflib_sesame(trip, con=FREE):
     store = SesameStore(con, "rede")
     ds = Dataset(store, default_union=True)
-
+    print(len(ds))
     s,p,o = trip
-    out = list()
+    out = 0
     for line in ds.triples((s,p,o)):
         #print(line[0].n3())
-        out.append(line)
+        #out.append(line)
+        #print(line)
+        out =out+1
 
     return out
 
@@ -159,11 +163,12 @@ def nested_rdflib(endpoint, trip):
     ds = Dataset(store, default_union=True)
 
     s,p,o = trip
-    out = list()
+    out = 0
     for a,b,c in ds.triples((s,p,o)):
         if isinstance(c,URIRef):
             for j in ds.triples((c, None, None)):
-                out.append(j)
+                out = out+1
+
 
     return out
 
@@ -177,12 +182,13 @@ def nested_rdflib_sesame(trip, con=FREE):
     #print (CTX2.n3())
     G = Graph()
     for a,b,c in ds.triples((s,p,o)):
-        G.add((a,b,c))
+        #G.add((a,b,c))
         if isinstance(c, URIRef):
-            for j in ds.triples((c, RDFS.label, None)):
-                G.add(j)
+            for j in ds.triples((c, None, None)):
+                out.append(j)
+                #print(j)
 
-    return G
+    return out
 
 @st_time
 def nested_virtuoso(trip):
@@ -198,6 +204,7 @@ def nested_virtuoso(trip):
         if isinstance(c, URIRef):
             for j in ds.triples((c, None, None)):
                 out.append(j)
+                #print(j)
 
     return out
 
@@ -343,7 +350,7 @@ def build_geojson(res):
         #print (out["w"])
         if out["o"] and out["l"] and out["w"]:
             f.append({"type": "Feature", "geometry": set_geometry(out["w"]), "properties":
-                {"label": str(out["l"]), "obs" : str(out["obs"])}})
+                {"label": str(out["l"]), "obs": str(out["obs"])}})
         elif out["p"] and out["o"] and out["l"]:
             m.setdefault(str(out["p"]),[]).append({str(out["o"]) : str(out["l"])})
 
@@ -360,9 +367,10 @@ def set_geometry(wkt):
 if __name__ == "__main__":
 
     #print (len(access_via_rdflib(ENDPOINTS["graphdb"], (None, None, OBS))))
-    #print (len(access_via_rdflib_sesame((RES, None, None), FREE)))
+    #print (len(access_via_rdflib_sesame((None, None, None), FREE)))
+    print (access_via_rdflib_sesame((None, None, OBS), FREE))
     #print (len(nested_rdflib(ENDPOINTS["graphdb"], (RES, None, None))))
-    #print (len(nested_rdflib_sesame((RES, None, None), SE)))
+    #print (len(nested_rdflib_sesame((RES2, None, None), FREE)))
     #print (len(nested_virtuoso((RES, None, None))))
     #print(len(nested_rdflib_sesame2((RES, None, None))))
     #print(len(nested_rdflib2(ENDPOINTS["graphdb"], (RES, None, None))))
@@ -375,9 +383,8 @@ if __name__ == "__main__":
     #print(len(query_rdflib_sesame(QU3, FREE)))
     #print(len(query_rdflib_sesame(QU3, FREE)))
     #print(len(query_rdflib_sesame(QU4, FREE)))
-    print(len(query_rdflib_sesame(QU7
-                            , FREE)))
-    #print(len(query_rdflib_sesame(QU5, FREE)))
+    #print(len(query_rdflib_sesame(QU7, FREE)))
+    #print(len(query_rdflib_sesame(QU6, FREE)))
     #print(len(query_rdflib_sesame(QU5, FREE)))
     #print(len(query_sparql_store(ENDPOINTS["graphdb"], QU)))
     #print(build_geojson(query_rdflib_sesame2(QU, FREE)))

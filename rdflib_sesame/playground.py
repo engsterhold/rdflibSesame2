@@ -1,18 +1,11 @@
 __author__ = 'robert'
-from rdflib.resource import Resource, URIRef, BNode
-from rdflib.namespace import *
-from rdflib import Graph, ConjunctiveGraph, Dataset, Literal
+from rdflib.resource import URIRef
+from rdflib import Literal
 from rdflib.store import Store
-from rdflib.plugin import get as plugin
-import rdflib.extras.infixowl as ont
-from rdflib.store import Store, NO_STORE, VALID_STORE
-import time
 import requests
-from collections import Iterable
-import json
-from rdflib_sesame.utils import QuadStreamParser
-from rdflib_sesame.binary_rdf_parser import BinaryRDFParser
 
+from rdflib_sesame.utils import QuadStreamParser
+from rdflib_sesame.parser.binary_rdf_parser import BinaryRDFParser
 
 RES = URIRef("http://127.0.0.1:6543/atlas/mrhsa/resource/74e1d7f2-f3d9-43de-9d89-f26d6e09a266")
 PRED = URIRef("http://127.0.0.1:6543/properties/map#werkbeschreibung")

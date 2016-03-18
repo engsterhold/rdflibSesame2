@@ -1,23 +1,17 @@
 
 __author__ = 'robert'
 #from rdflib.plugins.stores.sparqlstore import SPARQLStore
-from rdflib.resource import Resource, URIRef, BNode
-from rdflib.namespace import *
-from rdflib import Graph, ConjunctiveGraph, Dataset, Literal
-from rdflib.store import Store
-from rdflib.plugin import get as plugin
-import rdflib.extras.infixowl as ont
-from rdflib.store import Store, NO_STORE, VALID_STORE
-import time
-import requests
-from collections import Iterable
-import json
-from rdflib.query import Result
-from rdflib_sesame.utils import QuadStreamParser
-from rdflib_sesame.binary_rdf_parser import BinaryRDFParser
 from contextlib import closing
-from io import BytesIO, StringIO
+from io import BytesIO
 import re
+
+from rdflib import Graph
+from rdflib.store import Store
+import requests
+from rdflib.query import Result
+
+from rdflib_sesame.utils import QuadStreamParser
+from rdflib_sesame.parser import BinaryRDFParser, TrixParser
 
 pattern = re.compile(r"""
     ((?P<base>(\s*BASE\s*<.*?>)\s*)|(?P<prefixes>(\s*PREFIX\s+.+:\s*<.*?>)\s*))*
@@ -88,12 +82,22 @@ class SesameStore(Store):
         #payload["context"] = set(["<http://127.0.0.1:6543/atlas/mrhsa>"])
 
         payload["infer"] = infer
-        with closing(requests.get(uri, params=payload,stream=True, headers = {"Accept" : "application/x-binary-rdf",
-                                                                      'connection': 'keep-alive',
-                                                                     'transfer-encoding': 'chunked',
-                                                                     'Accept-Encoding': 'gzip,deflate'})) as r:
-            for i in BinaryRDFParser(r.content).parse():
-                yield i
+        #with closing(requests.get(uri, params=payload,stream=True, headers = {"Accept" : "application/x-binary-rdf",
+        #                                                              'connection': 'keep-alive',
+        #                                                             'transfer-encoding': 'chunked',
+        #                                                            'Accept-Encoding': 'gzip,deflate'})) as r:
+        #    #r.raw.decode_content = True
+        #    for i in BinaryRDFParser(r.content).parse():
+        #       yield i
+        with closing(requests.get(uri, params=payload, stream=True, headers = {"Accept" : "application/trix",
+                                                                       'connection': 'keep-alive',
+                                                                      'transfer-encoding': 'chunked',
+                                                                      'Accept-Encoding': 'gzip,deflate'})) as r:
+
+           r.raw.decode_content = True
+           for i in TrixParser(r.raw).parse():
+               yield i
+
 
 
     def add(self, spo, context=None, quoted=False):
@@ -143,23 +147,27 @@ class SesameStore(Store):
 
     def query(self, query, initNs=None, initBindings=None, queryGraph=None, **kwargs):
 
-        r_queryType = pattern.search(query).group("prefixes").upper()
-        print(r_queryType)
+#        r_queryType = pattern.search(query).group("prefixes").upper()
+#        print(r_queryType)
         uri = self.rest_services["repository"]
         infer = kwargs.get('infer',"false")
         #timeout = kwargs.get('timeout',"0")
         payload = {"$"+k: v.n3() for k,v in initBindings.items()}
+
         payload["infer"] = infer
         #payload["$"+timeout]=0
-        query = "query="+query
-        r = requests.post(uri, query, params=payload, headers= {"Accept" : "application/sparql-results+json",
+        payload["query"] = query
+        r = requests.post(uri, data=payload, stream=True, headers= {"Accept" : "application/sparql-results+json",
             "Content-Type" :"application/x-www-form-urlencoded"})
 
-        stream = BytesIO()
-        stream.write(r.content)
-        stream.seek(0)
+        #stream = BytesIO()
+        #stream.write(r.content)
+        #stream.seek(0)
         #print(r.text)
-        return Result.parse(stream, "json")
+        r.raw.decode_content = True
+
+        return Result.parse(r.raw, "json")
+        #return r.json()
 
 
 
@@ -168,7 +176,7 @@ class SesameStore(Store):
         uri = self.rest_services["contexts"]
         if not triple:
             r = requests.get(uri, headers = {"Accept" : "application/sparql-results+json"})
-            yield r.text
+            return r.text
         else:
             raise "Not yet implemented"
 
@@ -177,7 +185,7 @@ class SesameStore(Store):
         uri = self.rest_services["size"]
         payload=dict()
         #print(context.n3())
-        if context.identifier:
+        if context:
             payload["context"] = context.identifier.n3()
             #r = requests.get(uri, params = payload)
 
@@ -187,11 +195,26 @@ class SesameStore(Store):
 
 
 if __name__ == "__main__":
-    f = Dummy()
-    FREE = "http://localhost:18080/graphdb%2Dworkbench%2Dfree"
-    qu = "Select * where {?s ?p ?o} limit 200"
-    #print(list(x for  x in SesameStore(FREE, "rede").query(qu)))
-    #URIRef("urn:a")
-    #URIRef("urn:b")
-    #URIRef("urn:c")
-    print(SesameStore(FREE, "test").remove((URIRef("urn:a"), URIRef("urn:b"), None)))
+    from io import BytesIO
+    def bla():
+
+         uri = "http://localhost:18080/graphdb%2Dworkbench%2Dfree/repositories/rede/statements"
+
+         payload= { "subj": "<http://127.0.0.1:6543/atlas/mrhsa/resource/b49b4fcb-d95e-49f2-a499-d5907aafb5aa>"}
+         with closing(requests.get(uri, params=payload, stream=True, headers = {"Accept" : "application/trix",
+                                                                   'connection': 'keep-alive',
+                                                                  'transfer-encoding': 'chunked',
+                                                                  'Accept-Encoding': 'gzip,deflate'})) as r:
+            #r.raw.decode_content = True
+            with open("test.trix", "w") as b:
+                b.write(r.text)
+
+
+            with open("test.trix", "rb") as x:
+
+                ii = BytesIO(x.read())
+                for i in TrixParser(ii).parse():
+                    print(i)
+
+
+    bla()

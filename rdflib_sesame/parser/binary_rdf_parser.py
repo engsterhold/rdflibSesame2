@@ -41,14 +41,30 @@ class BinaryRDFParser:
 
     def __init__(self, data, is_stream=False):
 
+        #FIXME Do not use
         if is_stream:
-            self.stream = data
+            self.is_stream = True
+            self.stream_generator = data
+            self.stream = BytesIO()
+            self.stream.write(next(self.stream_generator))
             self.stream.seek(0)
 
         else:
             self.stream = BytesIO()
             self.stream.write(data)
             self.stream.seek(0)
+
+
+    #def stream_caching(self, length):
+    #    #tstream = self.stream
+    #    t = self.stream.tell()+length
+    #    if len(self.stream.getbuffer())<t:
+    #        while len(self.stream.getbuffer())<t:
+    #            self.stream = BytesIO(self.stream.read())
+    #            self.stream.write(next(self.stream_generator))
+    #        self.stream.seek(0)
+
+
 
 
     def parse(self):
@@ -96,7 +112,7 @@ class BinaryRDFParser:
         comment = self.readString()
 
     def readValueDecl(self):
-
+        #self.stream_caching(4)
         id, = struct.unpack("!i", self.stream.read(4))
         v = self.readValue()
         self.declaredValues[id] = v
@@ -174,7 +190,8 @@ class BinaryRDFParser:
         #print(x)
         length, = struct.unpack("!i", self.stream.read(4))
         stringBytes = length << 1
-
+        #print(self.stream.getbuffer().nbytes, stringBytes, self.stream.tell())
+        #self.stream_caching(length)
         string = self.stream.read(stringBytes).decode("utf-16be")
         #print (string)
         return string
