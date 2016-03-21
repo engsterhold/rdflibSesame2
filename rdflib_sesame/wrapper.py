@@ -10,7 +10,6 @@ from rdflib.store import Store
 import requests
 from rdflib.query import Result
 
-from rdflib_sesame.utils import QuadStreamParser
 from rdflib_sesame.parser import BinaryRDFParser, TrixParser
 
 pattern = re.compile(r"""
@@ -33,7 +32,6 @@ class SesameStore(Store):
 
         self.__init_services(base_url, repository)
         #self.identifier = self.rest_services["repository"]
-        self.qsp = QuadStreamParser()
         #self.sess = requests.Session()
         self.base_url = base_url
         self.repositories = self.base_url+"/repositories"
@@ -77,7 +75,7 @@ class SesameStore(Store):
         if o:
             payload["obj"] = o.n3()
         if context:
-            payload["context"] = ["<{}>".format(context.identifier)]
+            payload["context"] = ["<{}>".format(context.identifier)] #FIXME
         #payload["context"] = set(["<http://127.0.0.1:6543/atlas/wa>","<http://127.0.0.1:6543/atlas/dwaln>", "<http://127.0.0.1:6543/atlas/mrhsa>", "<http://127.0.0.1:6543/geodata>" ])
         #payload["context"] = set(["<http://127.0.0.1:6543/atlas/mrhsa>"])
 
@@ -115,7 +113,7 @@ class SesameStore(Store):
         payload = dict()
         if context:
             payload["context"] = [context.n3()]
-        g = Graph(identifier=context  if context else None)
+        g = Graph(identifier=context if context else None)
         g.add(spo)
         data = g.serialize(format="nt")
         #print(str(y))
@@ -126,6 +124,12 @@ class SesameStore(Store):
         return r.status_code
 
     def remove(self, spo, context=None):
+        """
+        Removes a statement from the triple store
+        :param spo: the statenent
+        :param context: the context to remove from
+        :return:
+        """
 
         uri = self.rest_services["statements"]
         s,p,o = spo
@@ -146,6 +150,17 @@ class SesameStore(Store):
 
 
     def query(self, query, initNs=None, initBindings=None, queryGraph=None, **kwargs):
+        """
+        Performs a sparql query angainst the endpoint
+        TODO: Some query refinement and error checking
+        TODO: Streaming response.
+        :param query: The query
+        :param initNs: Initial namespaces, unused afaik
+        :param initBindings: Initial bindings
+        :param queryGraph: The Graph
+        :param kwargs: {infer: True/False}
+        :return: A rdflib.Result
+        """
 
 #        r_queryType = pattern.search(query).group("prefixes").upper()
 #        print(r_queryType)
@@ -176,7 +191,7 @@ class SesameStore(Store):
         uri = self.rest_services["contexts"]
         if not triple:
             r = requests.get(uri, headers = {"Accept" : "application/sparql-results+json"})
-            return r.text
+            return Result.parse(r.raw, "json")
         else:
             raise "Not yet implemented"
 
