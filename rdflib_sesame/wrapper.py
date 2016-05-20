@@ -93,8 +93,7 @@ class SesameStore(Store):
                                                                       'Accept-Encoding': 'gzip,deflate'})) as r:
 
            r.raw.decode_content = True
-           for i in TrixParser(r.raw).parse():
-               yield i
+           yield from self.__make_trix_generator__(r.raw)
 
 
 
@@ -172,20 +171,30 @@ class SesameStore(Store):
         payload["infer"] = infer
         #payload["$"+timeout]=0
         payload["query"] = query
-        r = requests.post(uri, data=payload, stream=True, headers= {"Accept" : "application/sparql-results+json",
-            "Content-Type" :"application/x-www-form-urlencoded"})
+        with closing(requests.post(uri, data=payload,
+                                   stream=True,
+                                   headers= {"Accept" : "application/sparql-results+json,application/trix",
+                                             'connection': 'keep-alive',
+                                             'Accept-Encoding': 'gzip,deflate',
+                                             "Content-Type" :"application/x-www-form-urlencoded"})) as r:
 
-        #stream = BytesIO()
-        #stream.write(r.content)
-        #stream.seek(0)
-        #print(r.text)
-        r.raw.decode_content = True
-
-        return Result.parse(r.raw, "json")
-        #return r.json()
-
+            r.raw.decode_content = True
+            if r.headers['Content-Type'] == 'application/sparql-results+json;charset=UTF-8':
+                yield from Result.parse(r.raw, "json")
+            elif r.headers['Content-Type'] == 'application/trix;charset=UTF-8':
+                yield from self.__make_trix_generator__(r.raw)
+            else:
+                raise ValueError("Response content type not parsable")
 
 
+    def __make_trix_generator__(self, raw):
+        """
+        result heisst jetzt trix sonst ändert sich nichts.
+        Helper method to encapsulate the streaming trix parsing
+        :param a raw response object
+        """
+        for i in TrixParser(raw).parse():
+                    yield i
 
     def contexts(self, triple=None):
         uri = self.rest_services["contexts"]
@@ -210,26 +219,4 @@ class SesameStore(Store):
 
 
 if __name__ == "__main__":
-    from io import BytesIO
-    def bla():
-
-         uri = "http://localhost:18080/graphdb%2Dworkbench%2Dfree/repositories/rede/statements"
-
-         payload= { "subj": "<http://127.0.0.1:6543/atlas/mrhsa/resource/b49b4fcb-d95e-49f2-a499-d5907aafb5aa>"}
-         with closing(requests.get(uri, params=payload, stream=True, headers = {"Accept" : "application/trix",
-                                                                   'connection': 'keep-alive',
-                                                                  'transfer-encoding': 'chunked',
-                                                                  'Accept-Encoding': 'gzip,deflate'})) as r:
-            #r.raw.decode_content = True
-            with open("test.trix", "w") as b:
-                b.write(r.text)
-
-
-            with open("test.trix", "rb") as x:
-
-                ii = BytesIO(x.read())
-                for i in TrixParser(ii).parse():
-                    print(i)
-
-
-    bla()
+    pass

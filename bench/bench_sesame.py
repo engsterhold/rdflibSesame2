@@ -22,7 +22,7 @@ from shapely.geometry import mapping, shape
 
 ENDPOINTS = {"virtuoso": "http://localhost:8890/sparql",
              "stardog" :"http://localhost:5820/rede/query",
-             "graphdb" : "http://localhost:18080/graphdb%2Dworkbench%2Dfree/repositories/rede",
+             "graphdb" : "http://localhost:7200/rede",
              "marmotta" : "http://localhost:8080/sparql"
              }
 
@@ -39,7 +39,7 @@ CTX1 =URIRef("http://127.0.0.1:6543/geodata")
 CTX2 = URIRef("http://127.0.0.1:6543/atlas/mrhsa")
 
 SE = "http://localhost:18080/graphdb%2Dworkbench%2Dse"
-FREE = "http://localhost:18080/graphdb%2Dworkbench%2Dfree"
+FREE = "http://localhost:7200"
 
 QU = """
 #PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -114,6 +114,17 @@ select ?le (count(distinct ?s) as ?CMaps) (count(distinct ?obs) as ?CObs) (group
     ?obs a qb:Observation; rm-ns:has_legend_entry ?le ;rm-ns:in_map ?s
 } group by ?le order by Desc(?CMaps)
 """
+
+CONST = """
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+#Select distinct ?s ?p ?o ?ol ?feat
+Construct {?s ?p ?o . ?o <http://127.0.0.1:6543/properties#at> ?feat . ?o rdfs:label ?ol }
+where { ?s ?p ?o .
+ ?s <http://127.0.0.1:6543/properties#uuid> '01f05526-f82c-4a11-947f-97edb1274e68' . optional{ ?o <http://127.0.0.1:6543/properties#at> ?feat } . optional {?o rdfs:label ?ol }
+}
+order by ?p ?o
+"""
+QSIMPLE = """ select * where { ?s a ?o}  limit 2 """
 
 def st_time(func):
     """
@@ -368,7 +379,7 @@ if __name__ == "__main__":
 
     #print (len(access_via_rdflib(ENDPOINTS["graphdb"], (None, None, OBS))))
     #print (len(access_via_rdflib_sesame((None, None, None), FREE)))
-    print (access_via_rdflib_sesame((None, None, OBS), FREE))
+    print (access_via_rdflib_sesame((None, None, LIT), FREE))
     #print (len(nested_rdflib(ENDPOINTS["graphdb"], (RES, None, None))))
     #print (len(nested_rdflib_sesame((RES2, None, None), FREE)))
     #print (len(nested_virtuoso((RES, None, None))))
@@ -379,8 +390,10 @@ if __name__ == "__main__":
     #print(len(walk_context((RES, None, None))))
     #print(len(query_sparql_store(ENDPOINTS["graphdb"], QU)))
     #print(len(query_sparql_store(ENDPOINTS["graphdb"], QU)))
-    #print(len(query_rdflib_sesame(QU, FREE)))
-    #print(len(query_rdflib_sesame(QU3, FREE)))
+    print("const")
+    print(len(query_rdflib_sesame(CONST, FREE)))
+    print("select")
+    print(len(query_rdflib_sesame(QU, FREE)))
     #print(len(query_rdflib_sesame(QU3, FREE)))
     #print(len(query_rdflib_sesame(QU4, FREE)))
     #print(len(query_rdflib_sesame(QU7, FREE)))

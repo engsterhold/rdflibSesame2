@@ -56,7 +56,6 @@ class TrixParser:
         :param stream: A Trix stream
         :return:
         """
-
         self.runner = etree.iterparse(stream, events=EVENTS)
 
     #POSITION = 0
