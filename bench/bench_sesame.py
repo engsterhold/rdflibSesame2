@@ -163,7 +163,7 @@ def access_via_rdflib_sesame(trip, con=FREE):
     for line in ds.triples((s,p,o)):
         #print(line[0].n3())
         #out.append(line)
-        #print(line)
+        print(line)
         out =out+1
 
     return out
@@ -379,7 +379,7 @@ if __name__ == "__main__":
 
     #print (len(access_via_rdflib(ENDPOINTS["graphdb"], (None, None, OBS))))
     #print (len(access_via_rdflib_sesame((None, None, None), FREE)))
-    print (access_via_rdflib_sesame((None, None, LIT), FREE))
+    print (access_via_rdflib_sesame((None, None, None), FREE))
     #print (len(nested_rdflib(ENDPOINTS["graphdb"], (RES, None, None))))
     #print (len(nested_rdflib_sesame((RES2, None, None), FREE)))
     #print (len(nested_virtuoso((RES, None, None))))

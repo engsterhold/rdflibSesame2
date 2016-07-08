@@ -87,13 +87,13 @@ class SesameStore(Store):
         #    #r.raw.decode_content = True
         #    for i in BinaryRDFParser(r.content).parse():
         #       yield i
-        with closing(requests.get(uri, params=payload, stream=True, headers = {"Accept" : "application/trix",
+        r =requests.get(uri, params=payload, stream=True, headers = {"Accept" : "application/trix",
                                                                        'connection': 'keep-alive',
                                                                       'transfer-encoding': 'chunked',
-                                                                      'Accept-Encoding': 'gzip,deflate'})) as r:
+                                                                      'Accept-Encoding': 'gzip,deflate'})
 
-           r.raw.decode_content = True
-           yield from self.__make_trix_generator__(r.raw)
+        r.raw.decode_content = True
+        return self.__make_trix_generator__(r)
 
 
 
@@ -171,30 +171,33 @@ class SesameStore(Store):
         payload["infer"] = infer
         #payload["$"+timeout]=0
         payload["query"] = query
-        with closing(requests.post(uri, data=payload,
+        r = requests.post(uri, data=payload,
                                    stream=True,
                                    headers= {"Accept" : "application/sparql-results+json,application/trix",
                                              'connection': 'keep-alive',
                                              'Accept-Encoding': 'gzip,deflate',
-                                             "Content-Type" :"application/x-www-form-urlencoded"})) as r:
+                                             "Content-Type" :"application/x-www-form-urlencoded"})
 
-            r.raw.decode_content = True
-            if r.headers['Content-Type'] == 'application/sparql-results+json;charset=UTF-8':
-                yield from Result.parse(r.raw, "json")
-            elif r.headers['Content-Type'] == 'application/trix;charset=UTF-8':
-                yield from self.__make_trix_generator__(r.raw)
-            else:
-                raise ValueError("Response content type not parsable")
+        r.raw.decode_content = True
+        if r.headers['Content-Type'] == 'application/sparql-results+json;charset=UTF-8':
+            return self.__make_result(r)
+        elif r.headers['Content-Type'] == 'application/trix;charset=UTF-8':
+            return self.__make_trix_generator__(r)
+        else:
+            raise ValueError("Response content type not parsable")
 
 
-    def __make_trix_generator__(self, raw):
+    def __make_trix_generator__(self, response):
         """
         result heisst jetzt trix sonst ändert sich nichts.
         Helper method to encapsulate the streaming trix parsing
         :param a raw response object
         """
-        for i in TrixParser(raw).parse():
-                    yield i
+        return TrixParser(response)
+
+
+    def __make_result(self, response):
+        return Result.parse(response.raw, "json")
 
     def contexts(self, triple=None):
         uri = self.rest_services["contexts"]

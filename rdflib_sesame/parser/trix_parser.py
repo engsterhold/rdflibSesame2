@@ -2,7 +2,7 @@ __author__ = 'robert'
 
 
 from rdflib import URIRef, BNode, Literal
-
+from contextlib import closing
 try:
     from xml.etree import cElementTree as etree
 except ImportError:
@@ -50,60 +50,68 @@ class TrixParser:
     next_uri_sets_context = False
     triple = []
 
-    def __init__(self, stream):
+    def __init__(self, response):
         """
         Constructs a new TrixParser for the given trix stream
         :param stream: A Trix stream
         :return:
         """
-        self.runner = etree.iterparse(stream, events=EVENTS)
-
+        #self.runner = etree.iterparse(stream, events=EVENTS)
+        self.response = response
     #POSITION = 0
 
 
+    def __iter__(self):
+        yield from self._parse()
 
-    def parse(self):
+
+
+    def _parse(self):
         """
         The actual parsing
         :return: yields statments + context
         """
-        self.runner = iter(self.runner)
-        _, root = next(self.runner)
+        with closing(self.response) as r:
+            context = None
+            runner = etree.iterparse(r.raw, events=EVENTS)
+            runner = iter(runner)
+            _, root = next(runner)
 
-        for event, element in self.runner:
-            if event == "start":
-                if element.tag == CONTEXT_TAG:
-                    self.next_uri_sets_context = True
-                elif element.tag == TRIPLE_TAG:
-                    self.next_uri_sets_context = False
-                    self.triple = []
-            elif event == "end":
-                if element.tag == URI_TAG:
-                    if self.next_uri_sets_context:
-                        self.context = URIRef(element.text)
-                    else:
-                        self.triple.append(URIRef(element.text))
+            for event, element in runner:
+                if event == "start":
+                    if element.tag == CONTEXT_TAG:
+                        next_uri_sets_context = True
+                    elif element.tag == TRIPLE_TAG:
+                        next_uri_sets_context = False
+                        triple = []
+                elif event == "end":
+                    if element.tag == URI_TAG:
+                        if next_uri_sets_context:
+                            context = URIRef(element.text)
+                        else:
+                            triple.append(URIRef(element.text))
 
-                elif element.tag == BNODE_TAG:
-                    self.triple.append(BNode(element.text))
+                    elif element.tag == BNODE_TAG:
+                            triple.append(BNode(element.text))
 
-                elif element.tag == PLAIN_LITERAL_TAG:
-                    if LANGUAGE_ATT in element.attrib:
-                        self.triple.append(Literal(element.text, lang=element.attrib[LANGUAGE_ATT]))
-                    else:
-                        self.triple.append(Literal(element.text))
+                    elif element.tag == PLAIN_LITERAL_TAG:
+                        if LANGUAGE_ATT in element.attrib:
+                            triple.append(Literal(element.text, lang=element.attrib[LANGUAGE_ATT]))
+                        else:
+                            triple.append(Literal(element.text))
 
-                elif element.tag == TYPED_LITERAL_TAG:
-                    dt = URIRef(element.attrib['datatype'])
-                    self.triple.append(Literal(element.text, datatype=dt))
+                    elif element.tag == TYPED_LITERAL_TAG:
+                        dt = URIRef(element.attrib['datatype'])
+                        triple.append(Literal(element.text, datatype=dt))
 
-                elif element.tag == CONTEXT_TAG:
-                    self.context = None
-                    element.clear()
-                elif element.tag == TRIPLE_TAG and len(self.triple) == 3:
-                    element.clear()
-                    yield  (self.triple[0],self.triple[1], self.triple[2]), self.context
-            root.clear()
+                    elif element.tag == CONTEXT_TAG:
+                        context = None
+                        element.clear()
+                    elif element.tag == TRIPLE_TAG and len(triple) == 3:
+                        element.clear()
+                        yield  (triple[0],triple[1], triple[2]), context
+
+                root.clear()
 
 
         #del self.runner
