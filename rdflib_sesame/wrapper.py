@@ -5,7 +5,7 @@ from contextlib import closing
 from io import BytesIO
 import re
 
-from rdflib import Graph
+from rdflib import Graph, URIRef, BNode, Literal
 from rdflib.store import Store
 import requests
 from rdflib.query import Result
@@ -28,7 +28,7 @@ class SesameStore(Store):
 
     rest_services = {}
 
-    def __init__(self, base_url, repository):
+    def __init__(self, base_url, repository, infer=True):
 
         self.__init_services(base_url, repository)
         #self.identifier = self.rest_services["repository"]
@@ -37,6 +37,7 @@ class SesameStore(Store):
         self.repositories = self.base_url+"/repositories"
         self.protocol = self.base_url+"/protocol"
         self.repository = self.repositories+"/"+repository
+        self.infer = infer
         super(SesameStore, self).__init__(identifier = self.rest_services["repository"])
 
 
@@ -56,7 +57,7 @@ class SesameStore(Store):
         self.rest_services["size"] = self.rest_services["repository"]+"/size"
 
 
-    def triples(self, triple_pattern, context=None, infer=False):
+    def triples(self, triple_pattern, context=None, infer=None):
         """
         FIXME: Improve perfomance on the parsing oder even better get somehow the stream request to work.
         TODO: allow one or more contexts
@@ -69,17 +70,26 @@ class SesameStore(Store):
         uri = self.rest_services["statements"]
         payload = dict(infer=infer)
         if s:
-            payload["subj"] = s.n3()
+            if not isinstance(s, (URIRef, BNode)):
+                return self.__yield_empty()
+            else:
+                payload["subj"] = s.n3()
         if p:
-            payload["pred"] = p.n3()
+            if not isinstance(p, (URIRef, BNode)):
+                self.__yield_empty()
+            else:
+                payload["pred"] = p.n3()
         if o:
-            payload["obj"] = o.n3()
-        if context:
-            payload["context"] = ["<{}>".format(context.identifier)] #FIXME
+            if not isinstance(o, (URIRef, BNode, Literal)):
+                self.__yield_empty()
+            else:
+                payload["obj"] = o.n3()
+        if context and isinstance(context, URIRef):
+            payload["context"] = [context.n3()] #FIXME
         #payload["context"] = set(["<http://127.0.0.1:6543/atlas/wa>","<http://127.0.0.1:6543/atlas/dwaln>", "<http://127.0.0.1:6543/atlas/mrhsa>", "<http://127.0.0.1:6543/geodata>" ])
         #payload["context"] = set(["<http://127.0.0.1:6543/atlas/mrhsa>"])
 
-        payload["infer"] = infer
+        payload["infer"] = self.infer if infer is None else infer
         #with closing(requests.get(uri, params=payload,stream=True, headers = {"Accept" : "application/x-binary-rdf",
         #                                                              'connection': 'keep-alive',
         #                                                             'transfer-encoding': 'chunked',
@@ -164,11 +174,11 @@ class SesameStore(Store):
 #        r_queryType = pattern.search(query).group("prefixes").upper()
 #        print(r_queryType)
         uri = self.rest_services["repository"]
-        infer = kwargs.get('infer',"false")
+        infer = kwargs.get('infer',None)
         #timeout = kwargs.get('timeout',"0")
         payload = {"$"+k: v.n3() for k,v in initBindings.items()}
 
-        payload["infer"] = infer
+        payload["infer"] = self.infer if infer is None else infer
         #payload["$"+timeout]=0
         payload["query"] = query
         r = requests.post(uri, data=payload,
@@ -184,7 +194,7 @@ class SesameStore(Store):
         elif r.headers['Content-Type'] == 'application/trix;charset=UTF-8':
             return self.__make_trix_generator__(r)
         else:
-            raise ValueError("Response content type not parsable")
+            raise ValueError("Response content type not parsable {r}".format(r=r.text))
 
 
     def __make_trix_generator__(self, response):
@@ -194,6 +204,12 @@ class SesameStore(Store):
         :param a raw response object
         """
         return TrixParser(response)
+
+
+    def __yield_empty(self):
+
+        if False:
+            yield
 
 
     def __make_result(self, response):
@@ -212,8 +228,8 @@ class SesameStore(Store):
         uri = self.rest_services["size"]
         payload=dict()
         #print(context.n3())
-        if context:
-            payload["context"] = context.identifier.n3()
+        #if context:
+        #    payload["context"] = context.identifier.n3()
             #r = requests.get(uri, params = payload)
 
         r = requests.get(uri, params=payload)

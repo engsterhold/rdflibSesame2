@@ -46,14 +46,14 @@ EVENTS = ("start", "end")
 
 class TrixParser:
 
-    context = None
-    next_uri_sets_context = False
-    triple = []
+    #context = None
+    #next_uri_sets_context = False
+    #triple = []
 
     def __init__(self, response):
         """
         Constructs a new TrixParser for the given trix stream
-        :param stream: A Trix stream
+        :param stream: A requests respone object, where streaming is enabled
         :return:
         """
         #self.runner = etree.iterparse(stream, events=EVENTS)
@@ -62,6 +62,10 @@ class TrixParser:
 
 
     def __iter__(self):
+        """
+        Make object iterable
+        :return:
+        """
         yield from self._parse()
 
 
@@ -75,8 +79,8 @@ class TrixParser:
             context = None
             runner = etree.iterparse(r.raw, events=EVENTS)
             runner = iter(runner)
-            _, root = next(runner)
-
+            _, root = next(runner) # the root
+            #print(root)
             for event, element in runner:
                 if event == "start":
                     if element.tag == CONTEXT_TAG:
@@ -112,14 +116,6 @@ class TrixParser:
                         yield  (triple[0],triple[1], triple[2]), context
 
                 root.clear()
-
-
-        #del self.runner
-
-    def clear_element(self,element):
-        element.clear()
-        while element.getprevious() is not None:
-            del element.getparent()[0]
 
 
 

@@ -161,12 +161,35 @@ def access_via_rdflib_sesame(trip, con=FREE):
     s,p,o = trip
     out = 0
     for line in ds.triples((s,p,o)):
-        #print(line[0].n3())
+        #print(line[0].n3())380
         #out.append(line)
-        print(line)
+        #print(line)
         out =out+1
 
     return out
+
+
+def statements(subj, con=FREE):
+    store = SesameStore(con, "rede2", infer=True)
+    g = Graph(store)
+
+
+    for p, o in g.predicate_objects(subj):
+        print(p, o)
+        #if isinstance(o, URIRef):
+        labels = g.label(o)
+        print("l",labels)
+
+
+
+def empty_result_test():
+    g = Graph()
+
+    g.add((URIRef("urn:a"), URIRef("urn:b"), URIRef("urn:c")))
+
+    for i in g.triples((URIRef("urn:a"), URIRef("urn:bon"), None)):
+        print (i)
+
 
 @st_time
 def nested_rdflib(endpoint, trip):
@@ -379,7 +402,7 @@ if __name__ == "__main__":
 
     #print (len(access_via_rdflib(ENDPOINTS["graphdb"], (None, None, OBS))))
     #print (len(access_via_rdflib_sesame((None, None, None), FREE)))
-    print (access_via_rdflib_sesame((None, None, None), FREE))
+    #print (access_via_rdflib_sesame((None, None, None), FREE))
     #print (len(nested_rdflib(ENDPOINTS["graphdb"], (RES, None, None))))
     #print (len(nested_rdflib_sesame((RES2, None, None), FREE)))
     #print (len(nested_virtuoso((RES, None, None))))
@@ -390,10 +413,12 @@ if __name__ == "__main__":
     #print(len(walk_context((RES, None, None))))
     #print(len(query_sparql_store(ENDPOINTS["graphdb"], QU)))
     #print(len(query_sparql_store(ENDPOINTS["graphdb"], QU)))
-    print("const")
-    print(len(query_rdflib_sesame(CONST, FREE)))
-    print("select")
-    print(len(query_rdflib_sesame(QU, FREE)))
+    #print("const")
+    #print(len(query_rdflib_sesame(CONST, FREE)))
+    #print("select")
+    #print(len(query_rdflib_sesame(QU, FREE)))
+    #empty_result_test()
+    statements(URIRef("http://localhost:9001/maps/mrhsa/resource/0c3c1109-9d1f-40f0-998b-0c77f56c6dd2"))
     #print(len(query_rdflib_sesame(QU3, FREE)))
     #print(len(query_rdflib_sesame(QU4, FREE)))
     #print(len(query_rdflib_sesame(QU7, FREE)))
