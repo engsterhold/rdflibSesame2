@@ -7,9 +7,10 @@ import re
 from rdflib.plugin import get as plugin
 from rdflib import Graph, URIRef, BNode, Literal, Variable, ConjunctiveGraph, Dataset
 from rdflib.store import Store
-import requests
 from rdflib.query import Result
-
+from tornado import gen
+from tornado.httpclient import AsyncHTTPClient
+from urllib.parse import urlencode, quote_plus
 from rdflib_sesame.parser import BinaryRDFParser, TrixParser, XMLResultParser
 
 pattern = re.compile(r"""
@@ -25,11 +26,13 @@ class Dummy:
 class SesameStore(Store):
 
 
+    rest_services = {}
+
     def __init__(self, base_url, repository, infer=True):
-        self.context_aware = True
-        self.graph_aware = True
 
         self.__init_services(base_url, repository)
+        self.context_aware = True
+        self.graph_aware = True
         #self.identifier = self.rest_services["repository"]
         #self.sess = requests.Session()
         #self.base_url = base_url
@@ -37,6 +40,7 @@ class SesameStore(Store):
         #self.protocol = self.base_url+"/protocol"
         #self.repository = self.repositories+"/"+repository
         self.infer = infer
+        self.http_client = AsyncHTTPClient()
         super(SesameStore, self).__init__(identifier = self.rest_services["repository"])
 
 
@@ -47,7 +51,7 @@ class SesameStore(Store):
         :param repository:
         :return:
         """
-        self.rest_services = {}
+
         self.rest_services["protocol"] = base_url+"/protocol"
         self.rest_services["repositories"] = base_url+"/repositories"
         self.rest_services["repository"] = base_url+"/repositories/{}".format(repository)
@@ -57,6 +61,7 @@ class SesameStore(Store):
         self.rest_services["transaction"] = self.rest_services["repository"]+"/transactions"
 
 
+    @gen.coroutine
     def triples(self, triple_pattern, context=None, infer=None):
         """
         FIXME: Improve perfomance on the parsing oder even better get somehow the stream request to work.
@@ -84,48 +89,50 @@ class SesameStore(Store):
                 self.__yield_empty()
             else:
                 payload["obj"] = o.n3()
-        if context and isinstance(context.identifier, URIRef):
-            payload["context"] = [context.identifier.n3()] #FIXME
+        #if context and isinstance(context.identifier, URIRef):
+        #    payload["context"] = [context.identifier.n3()] #FIXME
         #payload["context"] = set(["<http://127.0.0.1:6543/atlas/wa>","<http://127.0.0.1:6543/atlas/dwaln>", "<http://127.0.0.1:6543/atlas/mrhsa>", "<http://127.0.0.1:6543/geodata>" ])
         #payload["context"] = set(["<http://127.0.0.1:6543/atlas/mrhsa>"])
 
         payload["infer"] = self.infer if infer is None else infer
         payload["infer"] = str(payload["infer"]).lower()
-        #with closing(requests.get(uri, params=payload,stream=True, headers = {"Accept" : "application/x-binary-rdf",
-        #                                                              'connection': 'keep-alive',
-        #                                                             'transfer-encoding': 'chunked',
-        #                                                            'Accept-Encoding': 'gzip,deflate'})) as r:
-        #    #r.raw.decode_content = True
-        #    for i in BinaryRDFParser(r.content).parse():
-        #       yield i
-        r =requests.get(uri, params=payload, stream=True, headers = {"Accept" : "application/trix",
+
+        qs = urlencode(payload, quote_via=quote_plus)
+        uri= "{}?{}".format(uri, qs)
+        http_client = AsyncHTTPClient()
+        response = yield http_client.fetch(uri, method="GET",headers= {"Accept" : "application/trix",
                                                                        'connection': 'keep-alive',
                                                                       'transfer-encoding': 'chunked',
                                                                       'Accept-Encoding': 'gzip,deflate'})
 
-        r.raw.decode_content = True
-        return self.__make_trix_generator__(r)
+
+        return self.__make_trix_generator__(response)
 
 
 
     def _new_transaction(self):
         uri = self.rest_services["transaction"]
-        r = requests.post(uri)
+        r = yield self.http_client.fetch(uri, method="POST")
         trx = r.headers["location"]
         #print(trx)
         return trx
 
     def _rollback(self, trx):
-        r = requests.delete(trx)
+        r = yield self.http_client.fetch(trx, method="DELETE")
         print("rollback",r)
 
     def _commit(self,trx):
-        r = requests.put(trx, params={"action" : "COMMIT"})
+        payload = {"action" : "COMMIT"}
+        qs = urlencode(payload, quote_via=quote_plus)
+        uri= "{}?{}".format(trx, qs)
+        r = yield self.http_client.fetch(uri, method="PUT")
         #print("commit",r)
 
     def _add(self, trx, data, payload):
 
-        r = requests.post(trx, data=data, params=payload,
+        qs = urlencode(payload, quote_via=quote_plus)
+        uri= "{}?{}".format(trx, qs)
+        r = yield self.http_client.fetch(uri, method="POST",body=data,
                           headers={"Content-Type" :"text/turtle;charset=UTF-8"} )
         return r.status_code
 
@@ -262,18 +269,18 @@ class SesameStore(Store):
         #    payload["context"] = context.identifier.n3()
             #r = requests.get(uri, params = payload)
 
-        r = requests.get(uri, params=payload)
+        r = yield self.http_client.fetch(uri, method="GET")
         return int(r.text)
 
 
 
 if __name__ == "__main__":
-    Sesame = plugin("Sesame", Store)
-    store = Sesame("http://localhost:7200", "playground")
+    #Sesame = SesameStore()
+    store = SesameStore("http://localhost:7200", "playground")
     ctx = URIRef("urn:ctx/add_ng")
-    ds = Dataset(store)
+    ds = Graph(store)
     #graph = Graph(identifier=ctx)
-    ds.graph(ctx)
+    #g = ds.graph(ctx)
     a = URIRef("urn:add#Subj")
     b = URIRef("urn:add#Pred")
     c = Literal("erfolg_ng")

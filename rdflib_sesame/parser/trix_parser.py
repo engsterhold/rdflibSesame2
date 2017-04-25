@@ -4,6 +4,8 @@ __author__ = 'robert'
 from rdflib import URIRef, BNode, Literal
 from contextlib import closing
 try:
+    ### IMPORTANT: For some reason lxml does not work, with infered stuff in the respone, no idea why
+    ### could be the trailing / vs #
     from xml.etree import cElementTree as etree
 except ImportError:
     from xml.etree import ElementTree as etree
@@ -53,7 +55,7 @@ class TrixParser:
     def __init__(self, response):
         """
         Constructs a new TrixParser for the given trix stream
-        :param stream: A requests respone object, where streaming is enabled
+        :param response: A requests respone object, where streaming is enabled
         :return:
         """
         #self.runner = etree.iterparse(stream, events=EVENTS)
@@ -113,7 +115,7 @@ class TrixParser:
                         element.clear()
                     elif element.tag == TRIPLE_TAG and len(triple) == 3:
                         element.clear()
-                        yield  (triple[0],triple[1], triple[2]), context
+                        yield (triple[0],triple[1], triple[2]), context
 
                 root.clear()
 

@@ -153,7 +153,7 @@ class BinaryRDFParser:
 
     def readValueRef(self):
 
-        id, = length, = struct.unpack("!i", self.stream.read(4))
+        id, = struct.unpack("!i", self.stream.read(4))
         return self.declaredValues[id]
 
     def readUri(self):

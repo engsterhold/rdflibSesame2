@@ -124,7 +124,7 @@ where { ?s ?p ?o .
 }
 order by ?p ?o
 """
-QSIMPLE = """ select * where { ?s a ?o}  limit 2 """
+QSIMPLE = """ select * where { ?s a ?o}  limit 1000000 """
 
 def st_time(func):
     """
@@ -352,8 +352,12 @@ def walk_context(trip, con=FREE):
 def query_rdflib_sesame(qy, con=FREE):
     store = SesameStore(con, "rede")
     ds = Dataset(store, default_union=True)
-    out = list()
-    for r in ds.query(qy):
+    out = []
+    x = ds.query(qy)
+    print(x.vars)
+    for i,r in enumerate(x):
+        if i%1000 == 0:
+            print(i,r)
         out.append(r)
     return out
 
@@ -398,6 +402,27 @@ def set_geometry(wkt):
 
 
 
+def check_infer(con):
+    store = SesameStore(con, "rede2", infer=True)
+    q = """
+    #2016-11-10 10:19:18.438258
+PREFIX ms: <http://localhost:9001/schema/vocabulary#>
+PREFIX qb: <http://purl.org/linked-data/cube#>
+PREFIX bs: <http://localhost:9001/schema/vocabulary#>
+PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
+PREFIX dct: <http://purl.org/dc/terms/>
+PREFIX geo: <http://www.opengis.net/ont/geosparql#>
+PREFIX luc: <http://www.ontotext.com/owlim/lucene#>
+Construct { ?s ?p ?o . ?o rdfs:label ?l }  { ?s ?p ?o . optional { ?o rdfs:label ?l } .   }"""
+
+    g = Graph(store)
+    res = g.query(q, initBindings={"s" :URIRef("http://localhost:9001/maps/mrhsa/resource/0157d393-7dec-45dd-84a8-cb4c9784d53f")}, infer=True)
+
+    for i in res:
+        print(i)
+
+
+
 if __name__ == "__main__":
 
     #print (len(access_via_rdflib(ENDPOINTS["graphdb"], (None, None, OBS))))
@@ -418,8 +443,11 @@ if __name__ == "__main__":
     #print("select")
     #print(len(query_rdflib_sesame(QU, FREE)))
     #empty_result_test()
-    statements(URIRef("http://localhost:9001/maps/mrhsa/resource/0c3c1109-9d1f-40f0-998b-0c77f56c6dd2"))
-    #print(len(query_rdflib_sesame(QU3, FREE)))
+    #statements(URIRef("http://localhost:9001/maps/mrhsa/resource/0c3c1109-9d1f-40f0-998b-0c77f56c6dd2"))
+
+    for i in range(5):
+        print(len(query_rdflib_sesame(QSIMPLE, FREE)))
+    #check_infer(FREE)
     #print(len(query_rdflib_sesame(QU4, FREE)))
     #print(len(query_rdflib_sesame(QU7, FREE)))
     #print(len(query_rdflib_sesame(QU6, FREE)))
