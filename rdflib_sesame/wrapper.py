@@ -11,6 +11,7 @@ import requests
 from rdflib.query import Result
 
 from rdflib_sesame.parser import BinaryRDFParser, TrixParser, XMLResultParser
+import sleep
 
 pattern = re.compile(r"""
     ((?P<base>(\s*BASE\s*<.*?>)\s*)|(?P<prefixes>(\s*PREFIX\s+.+:\s*<.*?>)\s*))*
@@ -125,9 +126,18 @@ class SesameStore(Store):
 
     def _add(self, trx, data, payload):
 
-        r = requests.post(trx, data=data, params=payload,
-                          headers={"Content-Type" :"text/turtle;charset=UTF-8"} )
-        return r.status_code
+        try:
+
+            r = requests.post(trx, data=data, params=payload,
+                              headers={"Content-Type" :"text/turtle;charset=UTF-8"} )
+            return r.status_code
+        except:
+            print("in except going to sleep for 5 seconds")
+            sleep(5)
+            r = requests.post(trx, data=data, params=payload,
+                  headers={"Content-Type" :"text/turtle;charset=UTF-8"} )
+            return r.status_code
+
 
     def add(self, spo, context=None, quoted=False):
         """
