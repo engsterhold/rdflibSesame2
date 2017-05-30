@@ -1,6 +1,6 @@
-
 __author__ = 'robert'
 #from rdflib.plugins.stores.sparqlstore import SPARQLStore
+import logging
 from contextlib import closing
 from io import BytesIO, StringIO
 import re
@@ -9,9 +9,8 @@ from rdflib import Graph, URIRef, BNode, Literal, Variable, ConjunctiveGraph, Da
 from rdflib.store import Store
 import requests
 from rdflib.query import Result
-
+import time
 from rdflib_sesame.parser import BinaryRDFParser, TrixParser, XMLResultParser
-import sleep
 
 pattern = re.compile(r"""
     ((?P<base>(\s*BASE\s*<.*?>)\s*)|(?P<prefixes>(\s*PREFIX\s+.+:\s*<.*?>)\s*))*
@@ -110,11 +109,27 @@ class SesameStore(Store):
 
 
     def _new_transaction(self):
-        uri = self.rest_services["transaction"]
-        r = requests.post(uri)
-        trx = r.headers["location"]
-        #print(trx)
-        return trx
+        try:
+            uri = self.rest_services["transaction"]
+            r = requests.post(uri)
+            trx = r.headers["location"]
+            #print(trx)
+            return trx
+        except:
+            print("trx exception")
+            for i in range(5):
+                print("sleep trx", i)
+                time.sleep(i)
+                try:
+                    uri = self.rest_services["transaction"]
+                    r = requests.post(uri)
+                    trx = r.headers["location"]
+                    #print(trx)
+                    return trx
+                    break
+                except:
+                    print("still trx error: ", data)
+
 
     def _rollback(self, trx):
         r = requests.delete(trx)
@@ -126,17 +141,81 @@ class SesameStore(Store):
 
     def _add(self, trx, data, payload):
 
-        try:
+        r = requests.put(trx, data=data, params=payload,
+                          headers={"Content-Type" :"text/plain;charset=UTF-8"} )
+        #print(r)
+        if r.status_code ==200:
+            return r.status_code
+        else:
+            raise r.raise_for_status()
 
-            r = requests.post(trx, data=data, params=payload,
-                              headers={"Content-Type" :"text/turtle;charset=UTF-8"} )
+    def _repair_context(self, context):
+        """
+        Because of some wonky mechnics in rdflib context can either be an iterable, a graph,
+        a URIRef oder a BNode. we are only interested in the URIRef as a context
+        IMPORTANT: Only accepts URIRefs as valid context identifactors. everything else gets filtered
+        :context  the context to check
+        """
+
+        if isinstance(context, Graph):
+            return self._repair_context(context.identifier)
+        elif isinstance(context, URIRef):
+            return context
+        #elif not isinstance(x, (str, bytes)) and hasattr(x, '__iter__'):
+        #    contexts = []
+        #    for i in context:
+        #        contexts.append(self._repair_context(i))
+        #    return [i for i in contexts if not isinstance(i,BNode) ] # not 100% sure
+        else:
+            return None
+
+
+    def _addN(self, trx, data, payload):
+
+        r = requests.put(trx, data=data, params=payload,
+                          headers={"Content-Type" :"text/x-nquads;charset=UTF-8"} )
+        print(r)
+        if r.status_code ==200:
             return r.status_code
+        else:
+            raise r.raise_for_status()
+
+    def add_graph(self, graph):
+        graph = self._repair_context(graph)
+        return Graph(self, identifier=graph)
+
+
+    def addN(self, quads):
+
+        uri = self.rest_services["statements"]
+        payload = {"action":"ADD"}
+        #print("quads", quads)
+
+        trx = self._new_transaction()
+        try:
+            cache = ConjunctiveGraph()
+            for n, (s,p,o,c) in enumerate(quads):
+
+                c = self._repair_context(c)
+                #print("loop",n, (s,p,o,c) )
+                #x ="{} {} {} {} .".format(s.n3(), p.n3(), o.n3(), c.n3() if c else "")
+                cache.add((s,p,o,c))
+                if n%1000==999:
+                    data = cache.serialize(format="nquads")
+                    #data = data.encode("utf8")
+                    self._addN(trx, data, payload)
+                    data =None
+                    cache = ConjunctiveGraph()
+
+            data = cache.serialize(format="nquads")
+            #data = data.encode("utf8")
+            #print(data)
+            self._addN(trx, data, payload)
+            self._commit(trx)
+            data = None
         except:
-            print("in except going to sleep for 5 seconds")
-            sleep(5)
-            r = requests.post(trx, data=data, params=payload,
-                  headers={"Content-Type" :"text/turtle;charset=UTF-8"} )
-            return r.status_code
+            self._rollback(trx)
+
 
 
     def add(self, spo, context=None, quoted=False):
@@ -150,24 +229,39 @@ class SesameStore(Store):
         """
 
         #s,p,o = spo
+        context =self._repair_context(context)
         uri = self.rest_services["statements"]
         payload = {"action":"ADD"}
-        if context and not isinstance(context.identifier, BNode):
-            payload["context"] = context.identifier.n3()
-        g = Graph(identifier=context if context else None)
-        g.add(spo)
+        if context and not isinstance(context, BNode):
+            payload["context"] = context.n3()
+        #g = Graph(identifier=context)
+        #g.add(spo)
+        s, p, o = spo
+        nt = "{} {} {} .".format(s.n3(), p.n3(), o.n3())
 
-        data = g.serialize(format="turtle")
-        #data = data.decode("utf-8")
-        #print(data)
-
-
+        data = nt.encode("utf8")
         trx = self._new_transaction()
-
-        if self._add(trx, data, payload) != 200:
-            self._rollback(trx)
-        else:
+        try:
+            self._add(trx, data, payload)
             self._commit(trx)
+        except:
+            print("error: ", data)
+            self._rollback(trx)
+            raise Exception("addn rolled back")
+
+            ##
+            for i in range(5):
+                print("sleep", i)
+                time.sleep(i)
+                trx = self._new_transaction()
+                try:
+                    self._add(trx, data, payload)
+                    self._commit(trx)
+                    break
+                except:
+                    print("still error: ", data)
+                    self._rollback(trx)
+                    raise Exception("add rolled back after 5 retries")
 
 
     def remove(self, spo, context=None):
@@ -261,18 +355,21 @@ class SesameStore(Store):
             r = requests.get(uri, headers = {"Accept" : "application/sparql-results+json"})
             return Result.parse(r.raw, "json")
         else:
-            raise "Not yet implemented"
+            raise NotImplementedError
 
 
     def __len__(self, context=None):
+
+        context = self._repair_context(context)
         uri = self.rest_services["size"]
         payload=dict()
-        #print(context.n3())
-        #if context:
-        #    payload["context"] = context.identifier.n3()
-            #r = requests.get(uri, params = payload)
-
-        r = requests.get(uri, params=payload)
+        if context:
+            if isinstance(context, list):
+                context = [i.n3() for i in context]
+            else:
+                context = context.n3()
+            payload["context"] = context
+        r = requests.get(uri, params = payload)
         return int(r.text)
 
 
@@ -283,12 +380,18 @@ if __name__ == "__main__":
     ctx = URIRef("urn:ctx/add_ng")
     ds = Dataset(store)
     #graph = Graph(identifier=ctx)
-    ds.graph(ctx)
-    a = URIRef("urn:add#Subj")
-    b = URIRef("urn:add#Pred")
-    c = Literal("erfolg_ng")
+    g = ds.graph(ctx)
+    bt = []
+    for i in range(10):
+        a = URIRef("urn:add#Subj{}".format(i))
+        b = URIRef("urn:add#Pred{}".format(i))
+        c = Literal("erfolg_ng{}".format(i))
+        bt.append((a,b,c,g))
 
+    #print(bt)
+    #print(g)
+    g.addN(bt)
     #graph.add((a,b,c))
 
-    for i in ds.triples((None, b, None)):
-        print(i)
+    #for i in ds.triples((None, None, None)):
+        #print(i)
