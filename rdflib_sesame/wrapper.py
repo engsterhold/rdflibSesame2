@@ -113,18 +113,16 @@ class SesameStore(Store):
             uri = self.rest_services["transaction"]
             r = requests.post(uri)
             trx = r.headers["location"]
-            #print(trx)
             return trx
         except:
-            print("trx exception")
+            logging.warning("entered trx exception")
             for i in range(5):
-                print("sleep trx", i)
+                logging.warning("sleep trx", i)
                 time.sleep(i)
                 try:
                     uri = self.rest_services["transaction"]
                     r = requests.post(uri)
                     trx = r.headers["location"]
-                    #print(trx)
                     return trx
                     break
                 except:
@@ -133,7 +131,7 @@ class SesameStore(Store):
 
     def _rollback(self, trx):
         r = requests.delete(trx)
-        print("rollback",r)
+        raise Exception("transaction aborted, rolled back")
 
     def _commit(self,trx):
         r = requests.put(trx, params={"action" : "COMMIT"})
@@ -147,6 +145,7 @@ class SesameStore(Store):
         if r.status_code ==200:
             return r.status_code
         else:
+            logging.error("Status not 200/ok")
             raise r.raise_for_status()
 
     def _repair_context(self, context):
@@ -161,11 +160,6 @@ class SesameStore(Store):
             return self._repair_context(context.identifier)
         elif isinstance(context, URIRef):
             return context
-        #elif not isinstance(x, (str, bytes)) and hasattr(x, '__iter__'):
-        #    contexts = []
-        #    for i in context:
-        #        contexts.append(self._repair_context(i))
-        #    return [i for i in contexts if not isinstance(i,BNode) ] # not 100% sure
         else:
             return None
 
@@ -174,7 +168,7 @@ class SesameStore(Store):
 
         r = requests.put(trx, data=data, params=payload,
                           headers={"Content-Type" :"text/x-nquads;charset=UTF-8"} )
-        print(r)
+        #print(r)
         if r.status_code ==200:
             return r.status_code
         else:
@@ -206,10 +200,9 @@ class SesameStore(Store):
                     self._addN(trx, data, payload)
                     data =None
                     cache = ConjunctiveGraph()
+                    logging.info("Cache emptied")
 
             data = cache.serialize(format="nquads")
-            #data = data.encode("utf8")
-            #print(data)
             self._addN(trx, data, payload)
             self._commit(trx)
             data = None
@@ -221,9 +214,9 @@ class SesameStore(Store):
     def add(self, spo, context=None, quoted=False):
         """
         Single statement add.
-        TODO: Transactions
-        :param spo: The (triple)
-        :param context:
+        Not really happy right now. Will make problems with triple quotes
+        :param spo: The triple to add
+        :param context: The context
         :param quoted: Dont know yet
         :return: The status code (FIXME)
         """
@@ -245,13 +238,12 @@ class SesameStore(Store):
             self._add(trx, data, payload)
             self._commit(trx)
         except:
-            print("error: ", data)
+            logging.error("add error:", data)
             self._rollback(trx)
-            raise Exception("addn rolled back")
-
-            ##
+            #raise Exception("add rolled back")
+            n=0
             for i in range(5):
-                print("sleep", i)
+                logging.warning("add sleep", i)
                 time.sleep(i)
                 trx = self._new_transaction()
                 try:
@@ -259,9 +251,11 @@ class SesameStore(Store):
                     self._commit(trx)
                     break
                 except:
-                    print("still error: ", data)
+                    logging.warning("still error: ", data, i)
                     self._rollback(trx)
-                    raise Exception("add rolled back after 5 retries")
+                    n =n+1
+            if n == 4:
+                raise Exception("add rolled back after 5 retries")
 
 
     def remove(self, spo, context=None):
@@ -350,24 +344,35 @@ class SesameStore(Store):
         return Result.parse(response.raw, format="json")
 
     def contexts(self, triple=None):
+        """
+        check for triples not yet supportet
+        :param triple: optional triple
+        :return: the context as a Result
+        """
         uri = self.rest_services["contexts"]
         if not triple:
-            r = requests.get(uri, headers = {"Accept" : "application/sparql-results+json"})
+            r = requests.get(uri, stream=True,headers = {"Accept" : "application/sparql-results+json",
+                                             'connection': 'keep-alive',
+                                             'Accept-Encoding': 'gzip,deflate',
+                                             })
+            r.raw.decode_content = True
             return Result.parse(r.raw, "json")
         else:
             raise NotImplementedError
 
 
     def __len__(self, context=None):
+        """
+        Does not support an aggregation of contexts (yet)
+        :param context: the context to check size of, all if None
+        :return: the size as an int
+        """
 
         context = self._repair_context(context)
         uri = self.rest_services["size"]
         payload=dict()
         if context:
-            if isinstance(context, list):
-                context = [i.n3() for i in context]
-            else:
-                context = context.n3()
+            context = context.n3()
             payload["context"] = context
         r = requests.get(uri, params = payload)
         return int(r.text)
@@ -377,20 +382,24 @@ class SesameStore(Store):
 if __name__ == "__main__":
     Sesame = plugin("Sesame", Store)
     store = Sesame("http://localhost:7200", "playground")
-    ctx = URIRef("urn:ctx/add_ng")
+    ctx = URIRef("urn:ctx/add_test2")
     ds = Dataset(store)
     #graph = Graph(identifier=ctx)
     g = ds.graph(ctx)
     bt = []
-    for i in range(10):
+    for i in range(1020):
         a = URIRef("urn:add#Subj{}".format(i))
         b = URIRef("urn:add#Pred{}".format(i))
         c = Literal("erfolg_ng{}".format(i))
+        g.add((a,b,c))
         bt.append((a,b,c,g))
 
     #print(bt)
     #print(g)
-    g.addN(bt)
+    #g.addN(bt)
+    print(len(g))
+    #print(len(ds))
+    #print(list(ds.contexts()))
     #graph.add((a,b,c))
 
     #for i in ds.triples((None, None, None)):
