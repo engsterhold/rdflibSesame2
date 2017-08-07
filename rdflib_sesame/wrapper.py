@@ -11,11 +11,15 @@ import requests
 from rdflib.query import Result
 import time
 from rdflib_sesame.parser import BinaryRDFParser, TrixParser, XMLResultParser
+from rdflib_sesame.serializers import TrigSerializer2
 
 pattern = re.compile(r"""
     ((?P<base>(\s*BASE\s*<.*?>)\s*)|(?P<prefixes>(\s*PREFIX\s+.+:\s*<.*?>)\s*))*
     (?P<queryType>(CONSTRUCT|SELECT|ASK|DESCRIBE|INSERT|DELETE|CREATE|CLEAR|DROP|LOAD|COPY|MOVE|ADD))
 """, re.VERBOSE | re.IGNORECASE)
+
+
+NULL_CONTEXT = URIRef("http://www.openrdf.org/schema/sesame#nil")
 
 class Dummy:
     def __init__(self):
@@ -25,9 +29,10 @@ class Dummy:
 class SesameStore(Store):
 
 
-    def __init__(self, base_url, repository, infer=True):
+    def __init__(self, base_url, repository,**kwargs):
         self.context_aware = True
         self.graph_aware = True
+
 
         self.__init_services(base_url, repository)
         #self.identifier = self.rest_services["repository"]
@@ -36,7 +41,10 @@ class SesameStore(Store):
         #self.repositories = self.base_url+"/repositories"
         #self.protocol = self.base_url+"/protocol"
         #self.repository = self.repositories+"/"+repository
-        self.infer = infer
+        self.infer = kwargs.pop("infer", True)
+        self.trx_batch = kwargs.pop("trx_batch", 100000)
+        self.commit_batch = kwargs.pop("commit_batch", 10000)
+        self.commit_batch = min(self.trx_batch,self.commit_batch)
         super(SesameStore, self).__init__(identifier = self.rest_services["repository"])
 
 
@@ -126,7 +134,7 @@ class SesameStore(Store):
                     return trx
                     break
                 except:
-                    print("still trx error: ", data)
+                    logging.error("still trx error: ", data)
 
 
     def _rollback(self, trx):
@@ -150,9 +158,9 @@ class SesameStore(Store):
 
     def _repair_context(self, context):
         """
-        Because of some wonky mechnics in rdflib context can either be an iterable, a graph,
+        Because of some wonky mechanics in rdflib, context can either be a graph,
         a URIRef oder a BNode. we are only interested in the URIRef as a context
-        IMPORTANT: Only accepts URIRefs as valid context identifactors. everything else gets filtered
+        IMPORTANT: Only accepts URIRefs as valid context identifactors. everything else get set to NULL_CONTEXT
         :context  the context to check
         """
 
@@ -161,7 +169,7 @@ class SesameStore(Store):
         elif isinstance(context, URIRef):
             return context
         else:
-            return None
+            return NULL_CONTEXT
 
 
     def _addN(self, trx, data, payload):
@@ -194,19 +202,25 @@ class SesameStore(Store):
                 #print("loop",n, (s,p,o,c) )
                 #x ="{} {} {} {} .".format(s.n3(), p.n3(), o.n3(), c.n3() if c else "")
                 cache.add((s,p,o,c))
-                if n%1000==999:
+                if n%self.commit_batch==self.commit_batch-1:
                     data = cache.serialize(format="nquads")
                     #data = data.encode("utf8")
                     self._addN(trx, data, payload)
                     data =None
                     cache = ConjunctiveGraph()
-                    logging.info("Cache emptied")
+                    logging.debug("Cache flusehd")
+                if n%self.trx_batch==self.trx_batch-1:
+                    logging.debug("{} triples commited".format(n%self.trx_batch))
+                    self._commit(trx)
+                    trx = self._new_transaction()
 
             data = cache.serialize(format="nquads")
+            #print(data)
             self._addN(trx, data, payload)
             self._commit(trx)
             data = None
-        except:
+        except Exception as why:
+            logging.exception(why)
             self._rollback(trx)
 
 
@@ -225,14 +239,14 @@ class SesameStore(Store):
         context =self._repair_context(context)
         uri = self.rest_services["statements"]
         payload = {"action":"ADD"}
-        if context and not isinstance(context, BNode):
+        if context != NULL_CONTEXT:
             payload["context"] = context.n3()
-        #g = Graph(identifier=context)
-        #g.add(spo)
-        s, p, o = spo
-        nt = "{} {} {} .".format(s.n3(), p.n3(), o.n3())
-
-        data = nt.encode("utf8")
+        g = Graph(identifier=context)
+        g.add(spo)
+        #s, p, o = spo
+        #nt = "{} {} {} .".format(s.n3(), p.n3(), o.n3())
+        data = g.serialize(format="ntriples")
+        #data = data.encode("utf8")
         trx = self._new_transaction()
         try:
             self._add(trx, data, payload)
@@ -367,8 +381,8 @@ class SesameStore(Store):
         :param context: the context to check size of, all if None
         :return: the size as an int
         """
-
-        context = self._repair_context(context)
+        if context is not None:
+            context = self._repair_context(context)
         uri = self.rest_services["size"]
         payload=dict()
         if context:
@@ -382,25 +396,28 @@ class SesameStore(Store):
 if __name__ == "__main__":
     Sesame = plugin("Sesame", Store)
     store = Sesame("http://localhost:7200", "playground")
-    ctx = URIRef("urn:ctx/add_test2")
-    ds = Dataset(store)
-    #graph = Graph(identifier=ctx)
-    g = ds.graph(ctx)
+    ctx = URIRef("urn:ctx2/add_trig_test")
+    #ds = Dataset(store)
+    #g = Graph(store=store, identifier=ctx)
+    g = ConjunctiveGraph(store)
+    #g = ds.graph()
     bt = []
-    for i in range(1020):
-        a = URIRef("urn:add#Subj{}".format(i))
-        b = URIRef("urn:add#Pred{}".format(i))
-        c = Literal("erfolg_ng{}".format(i))
+    for i in range(3):
+        a = URIRef("urn:add2#Subj_add{}".format(i))
+        b = URIRef("urn:add3#Pred_add{}".format(i))
+        c = Literal("erfolg_ng_add{}".format(i), lang="de")
         g.add((a,b,c))
+    for i in range(3):
+        a = URIRef("urn:add2#Subj_addn{}".format(i))
+        b = URIRef("urn:add3#Pred_addn{}".format(i))
+        c = Literal("erfolg_ng_addn{}".format(i), datatype="urn:dummy")
         bt.append((a,b,c,g))
 
-    #print(bt)
-    #print(g)
-    #g.addN(bt)
+
+    g.addN(bt)
     print(len(g))
-    #print(len(ds))
-    #print(list(ds.contexts()))
-    #graph.add((a,b,c))
+    print(list(g.triples((None, None, None))))
+
 
     #for i in ds.triples((None, None, None)):
         #print(i)
